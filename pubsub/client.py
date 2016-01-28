@@ -1,4 +1,5 @@
-import base64
+from base64 import b64encode, b64decode
+import json
 
 from oauth2client.client import GoogleCredentials
 from googleapiclient import discovery
@@ -55,7 +56,10 @@ class PubSub(object):
             subscription=fq_subscription_name,
             body={'maxMessages': 50, 'returnImmediately': not wait}
         ).execute()
-        return response.get('receivedMessages', [])
+        messages = response.get('receivedMessages', [])
+        for message in messages:
+            message['payload'] = self._decode(message['message']['data'])
+        return messages
 
     def acknowledge(self, topic_name, messages):
         fq_subscription_name = self._get_subscription_name(topic_name)
@@ -68,7 +72,12 @@ class PubSub(object):
     # Private API, or very google-specific code
 
     def _encode(self, message):
-        return base64.b64encode(message).decode('ascii')
+        message = json.dumps(message).encode('utf-8')
+        return b64encode(message).decode('ascii')
+
+    def _decode(self, message):
+        message = b64decode(message.encode('ascii'))
+        return json.loads(message.decode('utf-8'))
 
     def _fqn(self, resource_type, name):
         return '{}/{}/{}'.format(self.project, resource_type, name)
