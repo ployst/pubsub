@@ -1,63 +1,99 @@
 import base64
-from .google import build_service_client, fqn, get_names
+
+from oauth2client.client import GoogleCredentials
+from googleapiclient import discovery
 
 
 NUM_RETRIES = 3
-PROJECT = 'ployst-proto'
+PUBSUB_SCOPES = ['https://www.googleapis.com/auth/pubsub']
+
+
+def get_names(items):
+    return [i['name'] for i in items]
+
+
+def build_service_client():
+    credentials = GoogleCredentials.get_application_default()
+    if credentials.create_scoped_required():
+        credentials = credentials.create_scoped(PUBSUB_SCOPES)
+
+    return discovery.build('pubsub', 'v1', credentials=credentials)
 
 
 class PubSub(object):
+    """
+    A client for the Google Cloud PubSub service.
 
+    The public API is designed to isolate us from the actual service internals
+    so that we may potentially swap providers more easily.
+
+    """
     def __init__(self, project, app_name):
+        self.project = 'projects/' + project
         self.app_name = app_name
         self.service = build_service_client()
-        projects_endpoint = self.service.projects()
-        self.topics_endpoint = projects_endpoint.topics()
-        self.subscriptions_endpoint = projects_endpoint.subscriptions()
+        projects = self.service.projects()
+        self.topics = projects.topics()
+        self.subscriptions = projects.subscriptions()
 
-    def ensure_topic(self, fq_topic_name):
-        response = self.topics_endpoint.list(project=PROJECT).execute()
-        topics = response['topics']
-        if fq_topic_name not in get_names(topics):
-            self.topics_endpoint.create(name=fq_topic_name, body={}).execute()
+    # Public API
 
     def publish(self, topic_name, messages):
-        fq_topic_name = fqn('topics', topic_name)
-        self.ensure_topic(fq_topic_name)
-
+        fq_topic_name = self._ensure_topic(topic_name)
         payload = {
             'messages': [
-                {'data': base64.b64encode(message)} for message in messages
+                {'data': self._encode(message)} for message in messages
             ]
         }
-        self.topics_endpoint.publish(
+        self.topics.publish(
             topic=fq_topic_name, body=payload
         ).execute()
 
-    def ensure_subscription(self, topic_name):
-        subscription_name = '{}.{}'.format(self.app_name, topic_name)
-        fq_subscription_name = fqn('subscriptions', subscription_name)
-        fq_topic_name = fqn('topics', topic_name)
+    def pull(self, topic_name, wait=False):
+        fq_subscription_name = self._ensure_subscription(topic_name)
+        response = self.subscriptions.pull(
+            subscription=fq_subscription_name,
+            body={'maxMessages': 50, 'returnImmediately': not wait}
+        ).execute()
+        return response.get('receivedMessages', [])
 
-        response = self.subscriptions_endpoint.list(project=PROJECT).execute()
+    def acknowledge(self, topic_name, messages):
+        fq_subscription_name = self._get_subscription_name(topic_name)
+        for message in messages:
+            ack_msg = {'ackIds': [message['ackId']]}
+            self.subscriptions.acknowledge(
+                subscription=fq_subscription_name, body=ack_msg
+            ).execute()
+
+    # Private API, or very google-specific code
+
+    def _encode(self, message):
+        return base64.b64encode(message).decode('ascii')
+
+    def _fqn(self, resource_type, name):
+        return '{}/{}/{}'.format(self.project, resource_type, name)
+
+    def _get_subscription_name(self, topic_name):
+        subscription_name = '{}.{}'.format(self.app_name, topic_name)
+        fq_subscription_name = self._fqn('subscriptions', subscription_name)
+        return fq_subscription_name
+
+    def _ensure_topic(self, topic_name):
+        fq_topic_name = self._fqn('topics', topic_name)
+        response = self.topics.list(project=self.project).execute()
+        topics = response['topics']
+        if fq_topic_name not in get_names(topics):
+            self.topics.create(name=fq_topic_name, body={}).execute()
+        return fq_topic_name
+
+    def _ensure_subscription(self, topic_name):
+        fq_subscription_name = self._get_subscription_name(topic_name)
+        fq_topic_name = self._fqn('topics', topic_name)
+
+        response = self.subscriptions.list(project=self.project).execute()
         subscriptions = response['subscriptions']
         if fq_subscription_name not in get_names(subscriptions):
-            self.subscriptions_endpoint.create(
+            self.subscriptions.create(
                 name=fq_subscription_name, body={'topic': fq_topic_name}
             ).execute()
         return fq_subscription_name
-
-    def pull(self, topic_name):
-        fq_subscription_name = self.ensure_subscription(topic_name)
-        messages = self.subscriptions_endpoint.pull(
-            subscription=fq_subscription_name,
-            body={'maxMessages': 50, 'returnImmediately': False}
-        ).execute()
-        return fq_subscription_name, messages
-
-    def acknowledge(self, messages, fq_subscription_name):
-        for message in messages['receivedMessages']:
-            ack_msg = {'ackIds': [message['ackId']]}
-            self.subscriptions_endpoint.acknowledge(
-                subscription=fq_subscription_name, body=ack_msg
-            ).execute()
