@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from random import randint, seed
 from unittest import TestCase
 
 from pubsub.client import PubSub
@@ -6,15 +7,25 @@ from pubsub.client import PubSub
 
 class TestPubSubClientForGoogle(TestCase):
 
-    def setUp(self):
-        self.pubsub = PubSub('ployst-proto', 'integration-tests')
-        self.topic = 'tests.publish_and_pull'
+    @classmethod
+    def setUpClass(cls):
+        seed()
+        cls.app_name = 'integration-tests-{}'.format(randint(0, 10**6))
+        cls.topic = 'tests.publish_and_pull-{}'.format(randint(0, 10**6))
+        cls.pubsub = PubSub('ployst-proto', cls.app_name)
+        cls.pubsub.ensure_topic(cls.topic)
+        cls.pubsub.ensure_subscription(cls.topic)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.pubsub.delete_topic(cls.topic)
+        cls.pubsub.delete_subscription(cls.topic)
 
     def test_publish_pull_and_acknowledge(self):
         message = {'content': 'I will be sent'}
 
         self.pubsub.publish(self.topic, [message])
-        pulled_messages = self.pubsub.pull(self.topic)
+        pulled_messages = self.pubsub.pull(self.topic, wait=True)
 
         payload = pulled_messages[0]['payload']
         try:
