@@ -39,6 +39,8 @@ class PubSub(object):
         projects = self.service.projects()
         self.topics = projects.topics()
         self.subscriptions = projects.subscriptions()
+        self.known_topics = []
+        self.known_subscriptions = []
 
     # Public API
 
@@ -74,10 +76,13 @@ class PubSub(object):
 
     def ensure_topic(self, topic_name):
         fq_topic_name = self._fqn('topics', topic_name)
-        response = self.topics.list(project=self.project).execute()
-        topics = response.get('topics', [])
-        if fq_topic_name not in get_names(topics):
-            self.topics.create(name=fq_topic_name, body={}).execute()
+        if fq_topic_name not in self.known_topics:
+            response = self.topics.list(project=self.project).execute()
+            topics = response.get('topics', [])
+            self.known_topics = get_names(topics)
+            if fq_topic_name not in self.known_topics:
+                self.topics.create(name=fq_topic_name, body={}).execute()
+                self.known_topics.append(fq_topic_name)
         return fq_topic_name
 
     def delete_topic(self, topic_name):
@@ -85,14 +90,17 @@ class PubSub(object):
 
     def ensure_subscription(self, topic_name):
         fq_subscription_name = self._get_subscription_name(topic_name)
-        fq_topic_name = self._fqn('topics', topic_name)
+        if fq_subscription_name not in self.known_subscriptions:
+            fq_topic_name = self._fqn('topics', topic_name)
 
-        response = self.subscriptions.list(project=self.project).execute()
-        subscriptions = response.get('subscriptions', [])
-        if fq_subscription_name not in get_names(subscriptions):
-            self.subscriptions.create(
-                name=fq_subscription_name, body={'topic': fq_topic_name}
-            ).execute()
+            response = self.subscriptions.list(project=self.project).execute()
+            subscriptions = response.get('subscriptions', [])
+            self.known_subscriptions = get_names(subscriptions)
+            if fq_subscription_name not in self.known_subscriptions:
+                self.subscriptions.create(
+                    name=fq_subscription_name, body={'topic': fq_topic_name}
+                ).execute()
+                self.known_subscriptions.append(fq_subscription_name)
         return fq_subscription_name
 
     def delete_subscription(self, topic_name):
@@ -117,4 +125,3 @@ class PubSub(object):
         subscription_name = '{}.{}'.format(topic_name, self.app_name)
         fq_subscription_name = self._fqn('subscriptions', subscription_name)
         return fq_subscription_name
-

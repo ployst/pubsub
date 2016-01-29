@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from random import randint, seed
 from unittest import TestCase
+from unittest.mock import patch
 
 from pubsub.client import PubSub
 
@@ -45,3 +46,13 @@ class TestPubSubClientForGoogle(TestCase):
 
         for message in ['hello', 'Barrobés', 12, {'too': True}]:
             self.assertEqual(message, encode_decode(message))
+
+    def test_known_topics_are_not_retrieved(self):
+        with patch.object(self.pubsub.topics, 'list') as list_topics:
+            self.pubsub.ensure_topic(self.topic)
+            self.assertEquals(list_topics.call_count, 0)
+
+    def test_known_subscriptions_are_not_retrieved(self):
+        with patch.object(self.pubsub.subscriptions, 'list') as list_subs:
+            self.pubsub.ensure_subscription(self.topic)
+            self.assertEquals(list_subs.call_count, 0)
