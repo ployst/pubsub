@@ -1,6 +1,4 @@
 machine:
-  timezone:
-    Etc/UTC
   python:
     version: 2.7.10
   environment:
