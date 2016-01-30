@@ -89,6 +89,7 @@ class PubSub(object):
         self.topics.delete(topic=self._fqn('topics', topic_name)).execute()
 
     def ensure_subscription(self, topic_name):
+        self.ensure_topic(topic_name)
         fq_subscription_name = self._get_subscription_name(topic_name)
         if fq_subscription_name not in self.known_subscriptions:
             fq_topic_name = self._fqn('topics', topic_name)

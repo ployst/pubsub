@@ -50,9 +50,23 @@ class TestPubSubClientForGoogle(TestCase):
     def test_known_topics_are_not_retrieved(self):
         with patch.object(self.pubsub.topics, 'list') as list_topics:
             self.pubsub.ensure_topic(self.topic)
-            self.assertEquals(list_topics.call_count, 0)
+            self.assertEqual(list_topics.call_count, 0)
 
     def test_known_subscriptions_are_not_retrieved(self):
         with patch.object(self.pubsub.subscriptions, 'list') as list_subs:
             self.pubsub.ensure_subscription(self.topic)
-            self.assertEquals(list_subs.call_count, 0)
+            self.assertEqual(list_subs.call_count, 0)
+
+    def test_subscriptions_and_topics_can_be_created_in_any_order(self):
+        new_topic = self.topic + 'b'
+
+        try:
+            pulled_messages = self.pubsub.pull(new_topic, wait=False)
+            self.assertEqual(pulled_messages, [])
+
+            self.pubsub.publish(new_topic, ['Hello'])
+            pulled_messages = self.pubsub.pull(new_topic, wait=True)
+            self.assertEqual(pulled_messages[0]['payload'], 'Hello')
+        finally:
+            self.pubsub.delete_subscription(new_topic)
+            self.pubsub.delete_topic(new_topic)
