@@ -5,7 +5,6 @@ from oauth2client.client import GoogleCredentials
 from googleapiclient import discovery
 
 
-NUM_RETRIES = 3
 PUBSUB_SCOPES = ['https://www.googleapis.com/auth/pubsub']
 
 
