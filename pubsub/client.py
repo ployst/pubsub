@@ -1,8 +1,9 @@
-from base64 import b64encode, b64decode
-import json
+from functools import partial
 
 from oauth2client.client import GoogleCredentials
 from googleapiclient import discovery
+
+from .message import encode, ReceivedMessage
 
 
 PUBSUB_SCOPES = ['https://www.googleapis.com/auth/pubsub']
@@ -47,7 +48,7 @@ class PubSub(object):
         fq_topic_name = self.ensure_topic(topic_name)
         payload = {
             'messages': [
-                {'data': self._encode(message)} for message in messages
+                {'data': encode(message)} for message in messages
             ]
         }
         self.topics.publish(
@@ -61,17 +62,19 @@ class PubSub(object):
             subscription=fq_subscription_name, body=body
         ).execute()
         messages = response.get('receivedMessages', [])
-        for message in messages:
-            message['payload'] = self._decode(message['message']['data'])
-        return messages
+        ack_callback = partial(self.acknowledge, topic_name)
+        return [
+            ReceivedMessage(message, ack_callback)
+            for message in messages
+        ]
 
     def acknowledge(self, topic_name, messages):
         fq_subscription_name = self._get_subscription_name(topic_name)
-        for message in messages:
-            ack_msg = {'ackIds': [message['ackId']]}
-            self.subscriptions.acknowledge(
-                subscription=fq_subscription_name, body=ack_msg
-            ).execute()
+        ack_ids = [message['ackId'] for message in messages]
+        ack_msg = {'ackIds': ack_ids}
+        self.subscriptions.acknowledge(
+            subscription=fq_subscription_name, body=ack_msg
+        ).execute()
 
     def ensure_topic(self, topic_name):
         fq_topic_name = self._fqn('topics', topic_name)
@@ -109,14 +112,6 @@ class PubSub(object):
         ).execute()
 
     # Private API, or very google-specific code
-
-    def _encode(self, message):
-        message = json.dumps(message).encode('utf-8')
-        return b64encode(message).decode('ascii')
-
-    def _decode(self, message):
-        message = b64decode(message.encode('ascii'))
-        return json.loads(message.decode('utf-8'))
 
     def _fqn(self, resource_type, name):
         return '{}/{}/{}'.format(self.project, resource_type, name)

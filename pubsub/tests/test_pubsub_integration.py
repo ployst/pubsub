@@ -6,7 +6,7 @@ from unittest.mock import patch
 from pubsub.client import PubSub
 
 
-class TestPubSubClientForGoogle(TestCase):
+class TestPubSubClient(TestCase):
 
     @classmethod
     def setUpClass(cls):
@@ -23,29 +23,39 @@ class TestPubSubClientForGoogle(TestCase):
         cls.pubsub.delete_subscription(cls.topic)
 
     def test_publish_pull_and_acknowledge(self):
-        message = {'content': 'I will be sent'}
+        one = {'content': 'One'}
+        two = {'content': 'Two'}
 
-        self.pubsub.publish(self.topic, [message])
-        pulled_messages = self.pubsub.pull(self.topic, wait=True)
+        self.pubsub.publish(self.topic, [one, two])
+        messages = self.pubsub.pull(self.topic, wait=True)
 
-        payload = pulled_messages[0]['payload']
         try:
-            self.assertEqual(payload, message)
-            self.assertEqual(len(pulled_messages), 1)
+            self.assertEqual(len(messages), 2)
+            self.assertEqual(messages[0].payload, one)
+            self.assertEqual(messages[1].payload, two)
         finally:
-            self.pubsub.acknowledge(self.topic, pulled_messages)
+            self.pubsub.acknowledge(self.topic, messages)
+
+    def test_unacked_messages_can_be_pulled_again(self):
+        one = {'content': 'One'}
+        two = {'content': 'Two'}
+
+        self.pubsub.publish(self.topic, [one, two])
+        messages = self.pubsub.pull(self.topic, wait=True)
+        # only ack the second message:
+        messages[1].ack()
+
+        next_messages = self.pubsub.pull(self.topic, wait=True)
+        try:
+            self.assertEqual(len(next_messages), 1)
+            self.assertEqual(next_messages[0].payload, one)
+        finally:
+            self.pubsub.acknowledge(self.topic, next_messages)
 
     def test_pull_doesnt_wait_if_no_messages(self):
         pulled_messages = self.pubsub.pull(self.topic)
 
         self.assertEqual(pulled_messages, [])
-
-    def test_encoded_messages_are_decoded_correctly(self):
-        def encode_decode(message):
-            return self.pubsub._decode(self.pubsub._encode(message))
-
-        for message in ['hello', 'Barrobés', 12, {'too': True}]:
-            self.assertEqual(message, encode_decode(message))
 
     def test_known_topics_are_not_retrieved(self):
         with patch.object(self.pubsub.topics, 'list') as list_topics:
@@ -61,12 +71,12 @@ class TestPubSubClientForGoogle(TestCase):
         new_topic = self.topic + 'b'
 
         try:
-            pulled_messages = self.pubsub.pull(new_topic, wait=False)
+            pulled_messages = self.pubsub.pull(new_topic)
             self.assertEqual(pulled_messages, [])
 
             self.pubsub.publish(new_topic, ['Hello'])
             pulled_messages = self.pubsub.pull(new_topic, wait=True)
-            self.assertEqual(pulled_messages[0]['payload'], 'Hello')
+            self.assertEqual(pulled_messages[0].payload, 'Hello')
         finally:
             self.pubsub.delete_subscription(new_topic)
             self.pubsub.delete_topic(new_topic)

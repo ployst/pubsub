@@ -46,6 +46,11 @@ format compatible with the service used.
     pulled_messages = self.pubsub.pull(topic)
     payload = pulled_messages[0]['payload']
     pubsub.acknowledge(topic, pulled_messages)
+
+    # or acknowledge individual messages:
+    for message in pulled_messages:
+        do_stuff(message)
+        message.ack()
 ```
 
 Unacknowledged messages will not be deleted, and may be retrieved at a later
