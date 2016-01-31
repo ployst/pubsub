@@ -1,0 +1,21 @@
+machine:
+  python:
+    version: 2.7.10
+  environment:
+    CLOUDSDK_COMPUTE_ZONE: europe-west1-c
+    KUBE_CLUSTER: cluster-ployst
+    GCLOUD_PROJECTID: ployst-proto
+    GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcloud-auth-credentials
+
+dependencies:
+  cache_directories:
+    - ~/google-cloud-sdk
+  override:
+    - git clone -b master git@github.com:ployst/ployst-integration.git
+    - ployst-integration/script/ensure-gcloud-installed
+    - ployst-integration/script/auth-gcloud
+    - deactivate && pyenv global 3.4.2 && pip install -r requirements/test.txt
+
+test:
+  override:
+    - deactivate && pyenv global 3.4.2 && nosetests --with-xunit --xunit-file=$CIRCLE_TEST_REPORTS/nosetests.xml

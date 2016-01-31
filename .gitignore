@@ -1,0 +1,4 @@
+*.orig
+*.pyc
+/tags
+nosetests.xml
