@@ -4,7 +4,7 @@ from setuptools import find_packages, setup
 
 
 setup(
-    name='pubsub',
+    name='ployst-pubsub',
     description='Client tool for the Google Cloud PubSub service',
     version='0.1',
     install_requires=[
